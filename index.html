@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabla de Transacciones con Filtro y Suma</title>
+    <!-- Carga Tailwind CSS para un estilo moderno y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define la fuente Inter para todo el documento */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 sm:p-6 md:p-8 lg:p-10 min-h-screen flex items-center justify-center">
+    <div class="container mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-4xl">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center text-gray-800 mb-6">
+            Transacciones de Crédito
+        </h1>
+
+        <!-- Sección de Filtros -->
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Filtro por Lugar de Transacción -->
+            <input type="text" id="filterLocation" placeholder="Filtrar por Lugar de Transacción..."
+                   class="p-3 border border-gray-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+            <!-- Filtro por Tarjeta -->
+            <input type="text" id="filterCard" placeholder="Filtrar por Tarjeta..."
+                   class="p-3 border border-gray-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+        </div>
+
+        <!-- Indicador de Carga -->
+        <div id="loadingIndicator" class="text-center text-gray-600 text-lg mb-4 hidden">
+            Cargando datos...
+        </div>
+
+        <!-- Mensaje de Error -->
+        <div id="errorMessage" class="text-center text-red-600 text-lg mb-4 hidden">
+            Error al cargar los datos. Por favor, verifica la conexión y la configuración.
+        </div>
+
+        <!-- Tabla de Datos -->
+        <div class="overflow-x-auto rounded-lg shadow-md">
+            <table class="min-w-full bg-white border-collapse">
+                <thead class="bg-blue-600 text-white">
+                    <tr>
+                        <th class="py-3 px-4 text-left text-sm font-semibold uppercase tracking-wider rounded-tl-lg">ID</th>
+                        <th class="py-3 px-4 text-left text-sm font-semibold uppercase tracking-wider">Fecha</th>
+                        <th class="py-3 px-4 text-left text-sm font-semibold uppercase tracking-wider">Lugar de Transacción</th>
+                        <th class="py-3 px-4 text-left text-sm font-semibold uppercase tracking-wider">Tarjeta</th>
+                        <th class="py-3 px-4 text-left text-sm font-semibold uppercase tracking-wider rounded-tr-lg">Valor</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody" class="divide-y divide-gray-200">
+                    <!-- Los datos se insertarán aquí mediante JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Sección del Total -->
+        <div class="mt-6 p-4 bg-blue-50 rounded-lg shadow-inner flex justify-between items-center">
+            <span class="text-xl font-semibold text-gray-700">Total de Valores:</span>
+            <span id="totalSum" class="text-2xl font-bold text-blue-700">0.00</span>
+        </div>
+    </div>
+
+    <script>
+        // URL de tu API de Python. Asegúrate de que coincida con el puerto donde se ejecuta tu Flask app.
+        const API_URL = 'http://127.0.0.1:5000/api/data';
+
+        // Referencias a elementos del DOM
+        const dataTableBody = document.getElementById('dataTableBody');
+        const totalSumElement = document.getElementById('totalSum');
+        const filterLocationInput = document.getElementById('filterLocation'); // Nuevo filtro
+        const filterCardInput = document.getElementById('filterCard');       // Nuevo filtro
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let allData = []; // Almacena todos los datos originales para el filtrado
+
+        /**
+         * Fetches data from the Python backend API.
+         * Muestra un indicador de carga y maneja errores.
+         */
+        async function fetchData() {
+            loadingIndicator.classList.remove('hidden'); // Muestra el indicador de carga
+            errorMessage.classList.add('hidden'); // Oculta cualquier mensaje de error previo
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                allData = data; // Guarda los datos originales
+                renderTable(allData); // Renderiza la tabla con todos los datos inicialmente
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                errorMessage.classList.remove('hidden'); // Muestra el mensaje de error
+                dataTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                                            No se pudieron cargar los datos.</td></tr>`;
+                totalSumElement.textContent = 'N/A'; // Reinicia la suma
+            } finally {
+                loadingIndicator.classList.add('hidden'); // Oculta el indicador de carga
+            }
+        }
+
+        /**
+         * Renders the table with the given data.
+         * @param {Array<Object>} data - An array of objects, where each object represents a row.
+         */
+        function renderTable(data) {
+            dataTableBody.innerHTML = ''; // Limpia el cuerpo de la tabla
+            if (data.length === 0) {
+                dataTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">
+                                            No hay datos para mostrar.</td></tr>`;
+            } else {
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.classList.add('hover:bg-gray-50', 'transition', 'duration-150'); // Efecto hover
+
+                    // Formatea la fecha para que se vea mejor
+                    const date = row.Fecha ? new Date(row.Fecha).toLocaleDateString('es-ES', {
+                        year: 'numeric', month: 'long', day: 'numeric'
+                    }) : '';
+
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 text-sm text-gray-800">${row.id || ''}</td>
+                        <td class="py-3 px-4 text-sm text-gray-800">${date}</td>
+                        <td class="py-3 px-4 text-sm text-gray-800">${row.Lugar_Transaccion || ''}</td>
+                        <td class="py-3 px-4 text-sm text-gray-800">${row.Tarjeta || ''}</td>
+                        <td class="py-3 px-4 text-sm text-gray-800">${(row.Valor || 0).toFixed(2)}</td>
+                    `;
+                    dataTableBody.appendChild(tr);
+                });
+            }
+            calculateTotal(data); // Recalcula la suma con los datos actuales
+        }
+
+        /**
+         * Calculates and displays the sum of the 'Valor' column.
+         * @param {Array<Object>} data - The data currently displayed in the table.
+         */
+        function calculateTotal(data) {
+            const total = data.reduce((sum, row) => sum + (parseFloat(row.Valor) || 0), 0);
+            totalSumElement.textContent = total.toFixed(2); // Muestra la suma con 2 decimales
+        }
+
+        /**
+         * Filters the table data based on the input field values.
+         * Se llama cada vez que cambia el valor de un campo de filtro.
+         */
+        function filterTable() {
+            const locationFilter = filterLocationInput.value.toLowerCase();
+            const cardFilter = filterCardInput.value.toLowerCase();
+
+            const filteredData = allData.filter(row => {
+                const matchesLocation = row.Lugar_Transaccion ? row.Lugar_Transaccion.toLowerCase().includes(locationFilter) : false;
+                const matchesCard = row.Tarjeta ? row.Tarjeta.toLowerCase().includes(cardFilter) : false;
+                return matchesLocation && matchesCard;
+            });
+
+            renderTable(filteredData); // Renderiza la tabla con los datos filtrados
+        }
+
+        // Añade listeners de eventos para los campos de filtro
+        filterLocationInput.addEventListener('keyup', filterTable);
+        filterCardInput.addEventListener('keyup', filterTable);
+        filterLocationInput.addEventListener('change', filterTable); // Para cambios con pegar/cortar
+        filterCardInput.addEventListener('change', filterTable); // Para cambios con pegar/cortar
+
+        // Carga los datos cuando la página se ha cargado completamente
+        window.onload = fetchData;
+    </script>
+</body>
+</html>
